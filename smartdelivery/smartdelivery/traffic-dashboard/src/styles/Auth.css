@@ -1,0 +1,14 @@
+.auth-container { display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
+.auth-box { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 350px; }
+h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+.input-group { margin-bottom: 15px; }
+.input-group label { display: block; margin-bottom: 5px; color: #7f8c8d; font-size: 14px; }
+.input-group input, .input-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+.role-tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+.role-tabs button { flex: 1; padding: 10px; border: none; background: none; cursor: pointer; font-weight: bold; color: #7f8c8d; }
+.role-tabs button.active { border-bottom: 3px solid #3498db; color: #3498db; }
+.login-btn { width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; transition: 0.3s; }
+.login-btn:hover { background: #2980b9; }
+.auth-links { display: flex; justify-content: space-between; margin-top: 15px; font-size: 13px; color: #3498db; }
+.auth-links span { cursor: pointer; }
+.auth-links span:hover { text-decoration: underline; }
