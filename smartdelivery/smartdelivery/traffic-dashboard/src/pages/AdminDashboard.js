@@ -136,13 +136,25 @@ export default function AdminDashboard() {
   return (
     <div style={{ width: "100%", minHeight: "100vh", background: "#f4f6f9", fontFamily: "Arial, sans-serif" }}>
 
-      {/* --- HEADER --- */}
-      <div style={{ background: "#2c3e50", color: "white", padding: "15px 30px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 5px rgba(0,0,0,0.2)" }}>
-        <h2 style={{ margin: 0 }}>🚗 TrackMile Admin</h2>
+      {/* 🚛 HEADER SECTION (UPDATED) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1a252f", color: "white", padding: "20px 30px", borderRadius: "12px", marginBottom: "30px", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+          {/* The Logo */}
+          <div style={{ fontSize: "35px", background: "rgba(255,255,255,0.1)", borderRadius: "50%", padding: "10px", width:"60px", height:"60px", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            🚛
+          </div>
+          
+          {/* The Text */}
+          <div>
+            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "bold", letterSpacing: "1px" }}>SmartDelivery</h1>
+            <p style={{ margin: "5px 0 0 0", opacity: 0.8, fontSize: "14px" }}>Admin Control Panel</p>
+          </div>
+        </div>
+
         <div>
           <button onClick={() => navigate("/history")} style={{ background: "#34495e", color: "white", border: "1px solid #555", padding: "10px 20px", marginRight: "10px", cursor: "pointer", borderRadius: "5px", fontWeight: "bold" }}>📜 Order History</button>
           <button onClick={() => navigate("/analytics")} style={{ background: "#8e44ad", color: "white", border: "none", padding: "10px 20px", marginRight: "10px", cursor: "pointer", borderRadius: "5px", fontWeight: "bold" }}>📊 Analytics</button>
-          <button onClick={handleLogout} style={{ background: "#c62828", color: "white", border: "none", padding: "10px 20px", cursor: "pointer", borderRadius: "5px", fontWeight: "bold" }}>Logout</button>
+          <button onClick={handleLogout} style={{ background: "#c62828", color: "white", border: "none", padding: "10px 20px", cursor: "pointer", borderRadius: "5px", fontWeight: "bold" }}>Logout ➜</button>
         </div>
       </div>
 

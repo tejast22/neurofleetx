@@ -2,25 +2,71 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-// ✅ Keep importing this, but we will use it differently to avoid crashes
+// ✅ Keeps Routing Machine for the API, but draws manually to prevent crashes
 import "leaflet-routing-machine"; 
 import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
 
 // ------------------------------------------
-// 🗺️ NAVIGATION COMPONENT (Safe Road-Route Version)
+// 🧠 1. SMART TRAFFIC MODEL (Heuristic)
+// ------------------------------------------
+const calculateSmartETA = (baseTimeSeconds) => {
+    const now = new Date();
+    const currentHour = now.getHours(); // 0-23
+    
+    let trafficFactor = 1.0; 
+    let status = "Clear 🟢";
+    let color = "#2ecc71"; // Green
+
+    // 🌅 Morning Rush (8 AM - 11 AM)
+    if (currentHour >= 8 && currentHour < 11) {
+        trafficFactor = 1.4; // +40% time
+        status = "Morning Rush 🟠";
+        color = "#f39c12"; 
+    } 
+    // 🌇 Evening Rush (5 PM - 8 PM)
+    else if (currentHour >= 17 && currentHour < 20) {
+        trafficFactor = 1.6; // +60% time
+        status = "Evening Rush 🔴";
+        color = "#e74c3c"; 
+    } 
+    // 🌙 Late Night (10 PM - 6 AM)
+    else if (currentHour >= 22 || currentHour < 6) {
+        trafficFactor = 0.9; // -10% time (Fast)
+        status = "Night Drive 🌙";
+        color = "#34495e"; 
+    }
+
+    // Calculate Final Values
+    const predictedTimeSeconds = baseTimeSeconds * trafficFactor;
+    const extraTimeMinutes = Math.round((predictedTimeSeconds - baseTimeSeconds) / 60);
+
+    return {
+        etaMinutes: Math.round(predictedTimeSeconds / 60),
+        delayMinutes: Math.max(0, extraTimeMinutes),
+        status: status,
+        color: color
+    };
+};
+
+// ------------------------------------------
+// 🗺️ 2. NAVIGATION COMPONENT (Fixed: No _leaflet_pos Error)
 // ------------------------------------------
 const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, progressStep }) => {
     const mapContainerRef = useRef(null);
     const mapInstanceRef = useRef(null);
-    const routeLayerRef = useRef(null); // Stores the Blue Line
+    
+    // 🛡️ REFS TO TRACK LAYERS SAFELY
+    const routeLayerRef = useRef(null);
+    const startMarkerRef = useRef(null);
+    const endMarkerRef = useRef(null);
+    
     const isMounted = useRef(true);
 
-    // 1. INITIALIZE MAP (Runs Once)
+    // Initialize Map (Runs Once)
     useEffect(() => {
         isMounted.current = true;
         if (!mapContainerRef.current) return;
 
-        // Create Map
         if (!mapInstanceRef.current) {
             const map = L.map(mapContainerRef.current).setView([startLat, startLng], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -29,9 +75,9 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
             mapInstanceRef.current = map;
         }
 
-        // Cleanup
         return () => {
             isMounted.current = false;
+            // 🛑 SAFE CLEANUP
             if (mapInstanceRef.current) {
                 mapInstanceRef.current.remove();
                 mapInstanceRef.current = null;
@@ -40,12 +86,12 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); 
 
-    // 2. FETCH & DRAW ROAD ROUTE (Manual Safe Mode)
+    // Calculate & Draw Route
     useEffect(() => {
         const map = mapInstanceRef.current;
         if (!map) return;
 
-        // A. Define Points
+        // A. Set Points
         let currentStartLat = startLat;
         let currentStartLng = startLng;
 
@@ -60,36 +106,38 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
         const startPoint = L.latLng(currentStartLat, currentStartLng);
         const endPoint = L.latLng(destLat, destLng);
 
-        // B. Clear Previous Route Line
+        // B. Clear Old Layers SAFELY (Fixes the crash)
         if (routeLayerRef.current) {
             map.removeLayer(routeLayerRef.current);
             routeLayerRef.current = null;
         }
+        if (startMarkerRef.current) {
+            map.removeLayer(startMarkerRef.current);
+            startMarkerRef.current = null;
+        }
+        if (endMarkerRef.current) {
+            map.removeLayer(endMarkerRef.current);
+            endMarkerRef.current = null;
+        }
 
-        // C. Draw Markers
-        // We remove old markers by clearing layers, or simple map recreation approach. 
-        // For stability, let's just redraw markers here.
-        map.eachLayer((layer) => {
-            if (layer instanceof L.Marker) map.removeLayer(layer);
-        });
-
-        L.marker(startPoint, {
+        // C. Add New Markers & Store Reference
+        const startMarker = L.marker(startPoint, {
             icon: L.divIcon({
                 className: 'custom-marker',
                 html: `<div style="background-color:#2ecc71; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black;"></div>`
             })
         }).addTo(map);
+        startMarkerRef.current = startMarker;
 
-        L.marker(endPoint, {
+        const endMarker = L.marker(endPoint, {
             icon: L.divIcon({
                 className: 'custom-marker',
                 html: `<div style="background-color:#e74c3c; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black;"></div>`
             })
         }).addTo(map);
+        endMarkerRef.current = endMarker;
 
-
-        // D. Calculate Route using OSRM Service Directly (No Control)
-        // This prevents the "removeLayer" crash because we control the drawing.
+        // D. Fetch Route
         const router = L.Routing.osrmv1({
             serviceUrl: 'https://router.project-osrm.org/route/v1'
         });
@@ -98,13 +146,12 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
             L.Routing.waypoint(startPoint),
             L.Routing.waypoint(endPoint)
         ], (err, routes) => {
-            // 🛑 Safety Check: If component unmounted while loading, STOP.
             if (!isMounted.current || !map) return;
 
             if (routes && routes[0]) {
                 const route = routes[0];
                 
-                // 1. Draw the Road Line Manually
+                // Draw Blue Line
                 const line = L.polyline(route.coordinates, {
                     color: '#007bff',
                     weight: 6,
@@ -114,11 +161,16 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
                 routeLayerRef.current = line;
                 map.fitBounds(line.getBounds(), { padding: [50, 50] });
 
-                // 2. Send Stats
+                // 🧠 APPLY SMART HEURISTIC MODEL
+                const smartData = calculateSmartETA(route.summary.totalTime);
+
                 if (onRouteFound) {
                     onRouteFound({
                         dist: (route.summary.totalDistance / 1000).toFixed(1),
-                        time: Math.round(route.summary.totalTime / 60)
+                        time: smartData.etaMinutes,      // Smart Time
+                        status: smartData.status,        // e.g., "Morning Rush"
+                        color: smartData.color,
+                        delay: smartData.delayMinutes
                     });
                 }
             }
@@ -133,7 +185,7 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
                 <h3 style={{marginTop:0}}>📍 Live Navigation</h3>
                 <p>Status: <strong>{progressStep === 0 ? "Starting Route" : `Checkpoint ${progressStep} Reached`}</strong></p>
                 <p style={{fontSize:"13px", color:"#7f8c8d"}}>
-                    Calculating optimal road path...
+                    Applying Smart Traffic Analysis...
                 </p>
             </div>
         </div>
@@ -141,7 +193,7 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
 };
 
 // ------------------------------------------
-// 🚛 MAIN DRIVER DASHBOARD
+// 🚛 3. MAIN DRIVER DASHBOARD
 // ------------------------------------------
 export default function DriverDashboard() {
     const navigate = useNavigate();
@@ -151,11 +203,11 @@ export default function DriverDashboard() {
     // Navigation State
     const [checkpoints, setCheckpoints] = useState({ cp1: false, cp2: false });
     const [progressStep, setProgressStep] = useState(0); 
+    
+    // 🚦 Traffic & Route Stats (Updated by Smart Model now)
     const [routeStats, setRouteStats] = useState({ dist: 0, time: 0 });
-
-    // 🚦 Traffic & Speed Simulation State
+    const [trafficStatus, setTrafficStatus] = useState({ status: "Clear 🟢", color: "#2ecc71", delay: 0 });
     const [speed, setSpeed] = useState(0);
-    const [trafficStatus, setTrafficStatus] = useState({ status: "Clear", color: "#2ecc71", delay: 0 });
 
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
@@ -163,19 +215,23 @@ export default function DriverDashboard() {
         setDriver(JSON.parse(storedUser));
         fetchOrders(JSON.parse(storedUser).email || JSON.parse(storedUser).name); 
 
-        // 🏎️ SIMULATION LOOP
+        // 🏎️ Simple Speed Simulation (Only Speed now, Traffic is handled by Map)
         const simulationInterval = setInterval(() => {
             setSpeed(Math.floor(Math.random() * (60 - 20 + 1)) + 20);
-            if (Math.random() > 0.9) {
-                const rand = Math.random();
-                if (rand < 0.33) setTrafficStatus({ status: "Clear 🟢", color: "#2ecc71", delay: 0 });
-                else if (rand < 0.66) setTrafficStatus({ status: "Moderate 🟠", color: "#f39c12", delay: 5 });
-                else setTrafficStatus({ status: "Heavy 🔴", color: "#e74c3c", delay: 15 });
-            }
         }, 3000); 
 
         return () => clearInterval(simulationInterval);
     }, [navigate]);
+
+    // ✅ NEW HANDLER: Correctly saves the Smart Data from the Map
+    const handleRouteFound = (data) => {
+        setRouteStats({ dist: data.dist, time: data.time });
+        setTrafficStatus({
+            status: data.status,
+            color: data.color,
+            delay: data.delay
+        });
+    };
 
     const fetchOrders = async (identifier) => {
         try {
@@ -249,7 +305,7 @@ export default function DriverDashboard() {
 
     if (!driver) return <div style={{padding:"50px", textAlign:"center"}}>⏳ Loading...</div>;
 
-    const dynamicETA = routeStats.time + trafficStatus.delay;
+    const displayTime = routeStats.time; 
 
     return (
         <div style={{ padding: "30px", maxWidth: "1200px", margin: "0 auto", fontFamily: "'Segoe UI', Roboto, sans-serif", background: "#f4f6f9", minHeight: "100vh" }}>
@@ -306,23 +362,29 @@ export default function DriverDashboard() {
                                     startLng={driver.currentLng || 72.5714} 
                                     destLat={order.destLat || 23.0300} 
                                     destLng={order.destLng || 72.5800} 
-                                    onRouteFound={setRouteStats}
+                                    onRouteFound={handleRouteFound} // ✅ Use the new Smart Handler
                                     progressStep={progressStep}
                                 />
 
                                 {/* DASHBOARD WIDGET */}
                                 <div style={{ background: "#ecf0f1", padding: "20px", borderRadius: "10px", marginTop: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div style={{ textAlign: "center", background: "white", padding: "10px 20px", borderRadius: "8px" }}>
+                                    
+                                    {/* SPEEDOMETER */}
+                                    <div style={{ textAlign: "center", background: "white", padding: "10px 20px", borderRadius: "8px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)" }}>
                                         <div style={{ fontSize: "12px", color: "#777" }}>SPEED</div>
                                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#2c3e50" }}>{speed} <span style={{fontSize:"14px"}}>km/h</span></div>
                                     </div>
+
+                                    {/* TRAFFIC STATUS (Smart Model) */}
                                     <div style={{ textAlign: "center", flex: 1, margin: "0 20px", background: trafficStatus.color, color: "white", padding: "10px", borderRadius: "8px" }}>
                                         <div style={{ fontWeight: "bold" }}>TRAFFIC: {trafficStatus.status}</div>
                                         <div style={{ fontSize: "12px" }}>Delay: +{trafficStatus.delay} mins</div>
                                     </div>
-                                    <div style={{ textAlign: "center", background: "white", padding: "10px 20px", borderRadius: "8px" }}>
+
+                                    {/* ETA & DISTANCE */}
+                                    <div style={{ textAlign: "center", background: "white", padding: "10px 20px", borderRadius: "8px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)" }}>
                                         <div style={{ fontSize: "12px", color: "#777" }}>ETA / DIST</div>
-                                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#2c3e50" }}>{dynamicETA} min / {routeStats.dist} km</div>
+                                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#2c3e50" }}>{displayTime} min / {routeStats.dist} km</div>
                                     </div>
                                 </div>
 

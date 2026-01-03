@@ -8,7 +8,8 @@ import com.smartdelivery.backend.service.GroqService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections; // ✅ Added for History sorting
+import java.time.LocalDate; // ✅ REQUIRED for "Today's Deliveries"
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +40,11 @@ public class AdminController {
     public Map<String, Object> getStats() {
         long totalDrivers = driverRepo.count();
         long totalOrders = orderRepo.count();
+
+        // ✅ NEW LOGIC: Count ONLY orders delivered TODAY
         long deliveredToday = orderRepo.findAll().stream()
                 .filter(o -> "Delivered".equalsIgnoreCase(o.getStatus()))
+                .filter(o -> o.getDeliveryDate() != null && o.getDeliveryDate().equals(LocalDate.now()))
                 .count();
 
         Map<String, Object> response = new HashMap<>();
@@ -105,12 +109,10 @@ public class AdminController {
         return driverRepo.findAll();
     }
 
-    // ✅ NEW: Admin calls this to get LIVE location for the map
     @GetMapping("/admin/driver-location")
     public Map<String, Double> getDriverLocation(@RequestParam String email) {
         Driver driver = driverRepo.findByEmail(email);
 
-        // Safety fallback if findByEmail misses
         if (driver == null) {
             driver = driverRepo.findAll().stream()
                     .filter(d -> d.getEmail().equalsIgnoreCase(email))
@@ -191,26 +193,23 @@ public class AdminController {
     // 📱 DRIVER APP API
     // ==========================================
 
-    // ✅ UPDATED: Shows only ACTIVE orders (Not "Delivered")
     @GetMapping("/driver/my-orders")
     public List<Order> getDriverOrders(@RequestParam String driverName) {
         return orderRepo.findAll().stream()
                 .filter(o -> o.getDriver() != null &&
                         (o.getDriver().equalsIgnoreCase(driverName) || o.getDriver().contains(driverName)))
-                .filter(o -> !"Delivered".equalsIgnoreCase(o.getStatus())) // Hide completed
+                .filter(o -> !"Delivered".equalsIgnoreCase(o.getStatus()))
                 .collect(Collectors.toList());
     }
 
-    // ✅ NEW: Shows only LAST 5 Completed Deliveries
     @GetMapping("/driver/history")
     public List<Order> getDriverHistory(@RequestParam String driverName) {
         List<Order> history = orderRepo.findAll().stream()
                 .filter(o -> o.getDriver() != null &&
                         (o.getDriver().equalsIgnoreCase(driverName) || o.getDriver().contains(driverName)))
-                .filter(o -> "Delivered".equalsIgnoreCase(o.getStatus())) // Show only completed
+                .filter(o -> "Delivered".equalsIgnoreCase(o.getStatus()))
                 .collect(Collectors.toList());
 
-        // Reverse to show newest first, and limit to 5
         Collections.reverse(history);
         return history.stream().limit(5).collect(Collectors.toList());
     }
@@ -249,17 +248,20 @@ public class AdminController {
         return "Order not found";
     }
 
+    // ✅ FIXED: Saves the Date when completing!
     @PostMapping("/driver/complete")
     public String completeOrder(@RequestParam String orderId) {
         Order order = orderRepo.findById(orderId).orElse(null);
         if (order != null) {
             order.setStatus("Delivered");
+            order.setDeliveryDate(LocalDate.now()); // 📅 Save Today's Date
             orderRepo.save(order);
             return "Order Delivered";
         }
         return "Error";
     }
 
+    // ✅ LIVE TRACKING: Receives GPS Coordinates
     @PostMapping("/driver/update-location")
     public String updateDriverLocation(@RequestParam String email, @RequestParam double lat, @RequestParam double lng) {
         Driver driver = driverRepo.findByEmail(email);
@@ -277,12 +279,11 @@ public class AdminController {
         return "Driver not found";
     }
 
-    // ⚠️ MASTER RESET: Deletes Drivers, Orders, AND Users
     @GetMapping("/admin/system/reset-all")
     public String resetSystem() {
         driverRepo.deleteAll();
         orderRepo.deleteAll();
         userRepo.deleteAll();
-        return "SYSTEM RESET SUCCESSFUL: Users, Drivers, and Orders deleted. Starting fresh.";
+        return "SYSTEM RESET SUCCESSFUL";
     }
 }

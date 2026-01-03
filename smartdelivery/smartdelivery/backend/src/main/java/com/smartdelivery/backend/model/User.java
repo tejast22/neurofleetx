@@ -11,13 +11,11 @@ public class User {
     private String id;
     private String name;
     private String email;
-    private String password; // In real app, this should be encrypted
-    private String role;     // "ADMIN" or "DRIVER"
-    private String vehicle;  // Only for Drivers
-    private String status;  // "Active", "Pending"
-    private String phone;
+    private String password;
+    private String role; // "ADMIN" or "DRIVER"
 
-    // Coordinates (for Drivers)
+    // Optional fields for Driver-Users
+    private String status;
     private double currentLat;
     private double currentLng;
 }
