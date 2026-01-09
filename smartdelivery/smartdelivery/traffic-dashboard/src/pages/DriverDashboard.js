@@ -51,18 +51,27 @@ const calculateSmartETA = (baseTimeSeconds) => {
 // ------------------------------------------
 // 🗺️ 2. NAVIGATION COMPONENT (Fixed: No _leaflet_pos Error)
 // ------------------------------------------
-const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, progressStep }) => {
+// ------------------------------------------
+// 🗺️ 2. NAVIGATION COMPONENT (Fixed: No Warnings)
+// ------------------------------------------
+// ------------------------------------------
+// 🗺️ 2. NAVIGATION COMPONENT (100% Real API Data)
+// ------------------------------------------
+const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound }) => {
     const mapContainerRef = useRef(null);
     const mapInstanceRef = useRef(null);
     
-    // 🛡️ REFS TO TRACK LAYERS SAFELY
+    // Layers
     const routeLayerRef = useRef(null);
-    const startMarkerRef = useRef(null);
-    const endMarkerRef = useRef(null);
-    
+    const driverMarkerRef = useRef(null);
+    const destMarkerRef = useRef(null);
+
+    // State
+    const [instructions, setInstructions] = useState([]);
+    const [isLoading, setIsLoading] = useState(true); // Loading indicator
     const isMounted = useRef(true);
 
-    // Initialize Map (Runs Once)
+    // 1. INITIALIZE MAP (Run Once)
     useEffect(() => {
         isMounted.current = true;
         if (!mapContainerRef.current) return;
@@ -75,71 +84,40 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
             mapInstanceRef.current = map;
         }
 
-        return () => {
-            isMounted.current = false;
-            // 🛑 SAFE CLEANUP
-            if (mapInstanceRef.current) {
-                mapInstanceRef.current.remove();
-                mapInstanceRef.current = null;
-            }
-        };
+        return () => { isMounted.current = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); 
 
-    // Calculate & Draw Route
+    // 2. FETCH REAL DATA (Runs every time Driver Moves)
     useEffect(() => {
         const map = mapInstanceRef.current;
         if (!map) return;
 
-        // A. Set Points
-        let currentStartLat = startLat;
-        let currentStartLng = startLng;
-
-        if (progressStep === 1) {
-            currentStartLat = (startLat + destLat) / 2;
-            currentStartLng = (startLng + destLng) / 2;
-        } else if (progressStep === 2) {
-            currentStartLat = destLat - 0.002;
-            currentStartLng = destLng - 0.002;
-        }
-
-        const startPoint = L.latLng(currentStartLat, currentStartLng);
+        const startPoint = L.latLng(startLat, startLng);
         const endPoint = L.latLng(destLat, destLng);
 
-        // B. Clear Old Layers SAFELY (Fixes the crash)
-        if (routeLayerRef.current) {
-            map.removeLayer(routeLayerRef.current);
-            routeLayerRef.current = null;
-        }
-        if (startMarkerRef.current) {
-            map.removeLayer(startMarkerRef.current);
-            startMarkerRef.current = null;
-        }
-        if (endMarkerRef.current) {
-            map.removeLayer(endMarkerRef.current);
-            endMarkerRef.current = null;
+        // A. Update Driver Marker (Instant Move)
+        if (!driverMarkerRef.current) {
+            driverMarkerRef.current = L.marker(startPoint, {
+                icon: L.divIcon({ className: 'custom-marker', html: `<div style="background-color:#2ecc71; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black; z-index: 1000;"></div>` })
+            }).addTo(map);
+        } else {
+            driverMarkerRef.current.setLatLng(startPoint);
+            map.panTo(startPoint); // Follow driver
         }
 
-        // C. Add New Markers & Store Reference
-        const startMarker = L.marker(startPoint, {
-            icon: L.divIcon({
-                className: 'custom-marker',
-                html: `<div style="background-color:#2ecc71; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black;"></div>`
-            })
-        }).addTo(map);
-        startMarkerRef.current = startMarker;
+        // B. Update Destination Marker
+        if (!destMarkerRef.current) {
+            destMarkerRef.current = L.marker(endPoint, {
+                icon: L.divIcon({ className: 'custom-marker', html: `<div style="background-color:#e74c3c; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black;"></div>` })
+            }).addTo(map);
+        }
 
-        const endMarker = L.marker(endPoint, {
-            icon: L.divIcon({
-                className: 'custom-marker',
-                html: `<div style="background-color:#e74c3c; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px black;"></div>`
-            })
-        }).addTo(map);
-        endMarkerRef.current = endMarker;
-
-        // D. Fetch Route
+        // C. CALL OSRM API (Real Data Only)
+        setIsLoading(true);
         const router = L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
+            serviceUrl: 'https://router.project-osrm.org/route/v1',
+            profile: 'driving'
         });
 
         router.route([
@@ -147,46 +125,102 @@ const NavigationMap = ({ startLat, startLng, destLat, destLng, onRouteFound, pro
             L.Routing.waypoint(endPoint)
         ], (err, routes) => {
             if (!isMounted.current || !map) return;
+            setIsLoading(false);
 
             if (routes && routes[0]) {
                 const route = routes[0];
-                
-                // Draw Blue Line
-                const line = L.polyline(route.coordinates, {
+
+                // 1. Draw Real Route (Seamless Swap)
+                const newLine = L.polyline(route.coordinates, {
                     color: '#007bff',
                     weight: 6,
                     opacity: 0.8
-                }).addTo(map);
+                });
                 
-                routeLayerRef.current = line;
-                map.fitBounds(line.getBounds(), { padding: [50, 50] });
+                // Add new line BEFORE removing old one (Prevents Blink)
+                newLine.addTo(map);
+                
+                if (routeLayerRef.current) {
+                    map.removeLayer(routeLayerRef.current);
+                }
+                routeLayerRef.current = newLine;
+                map.fitBounds(newLine.getBounds(), { padding: [50, 50] });
 
-                // 🧠 APPLY SMART HEURISTIC MODEL
-                const smartData = calculateSmartETA(route.summary.totalTime);
+                // 2. Set Real Instructions
+                // We strictly use API data. If API returns nothing, list is empty.
+                if (route.instructions) {
+                    setInstructions(route.instructions);
+                } else {
+                    setInstructions([]); // No dummy data
+                }
+
+                // 3. Calculate Real ETA
+                // We use route.summary.totalTime (Real API seconds)
+                const apiTimeSeconds = route.summary.totalTime;
+                const distKm = (route.summary.totalDistance / 1000).toFixed(1);
+
+                // Apply our "Smart Traffic" logic to the REAL API time
+                const smartData = calculateSmartETA(apiTimeSeconds);
 
                 if (onRouteFound) {
                     onRouteFound({
-                        dist: (route.summary.totalDistance / 1000).toFixed(1),
-                        time: smartData.etaMinutes,      // Smart Time
-                        status: smartData.status,        // e.g., "Morning Rush"
+                        dist: distKm,
+                        time: smartData.etaMinutes, 
+                        status: smartData.status,
                         color: smartData.color,
                         delay: smartData.delayMinutes
                     });
                 }
+            } else {
+                console.warn("OSRM API did not return a route.");
             }
         });
 
-    }, [startLat, startLng, destLat, destLng, progressStep, onRouteFound]); 
+    }, [startLat, startLng, destLat, destLng, onRouteFound]);
 
     return (
         <div style={{ display: "flex", gap: "20px", height: "450px" }}>
-            <div ref={mapContainerRef} style={{ flex: 2, borderRadius: "10px", border: "1px solid #ddd" }} />
-            <div style={{ flex: 1, background: "white", padding: "20px", border: "1px solid #ddd", borderRadius: "10px", overflowY: "auto" }}>
-                <h3 style={{marginTop:0}}>📍 Live Navigation</h3>
-                <p>Status: <strong>{progressStep === 0 ? "Starting Route" : `Checkpoint ${progressStep} Reached`}</strong></p>
-                <p style={{fontSize:"13px", color:"#7f8c8d"}}>
-                    Applying Smart Traffic Analysis...
-                </p>
+            {/* Map Area */}
+            <div ref={mapContainerRef} style={{ flex: 2, borderRadius: "10px", border: "1px solid #ddd", position: "relative" }}>
+                {isLoading && (
+                    <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,0.9)", padding: "5px 10px", borderRadius: "5px", fontSize: "12px", zIndex: 1000, fontWeight: "bold" }}>
+                        🔄 Updating Route...
+                    </div>
+                )}
+            </div>
+            
+            {/* Real Instructions Panel */}
+            <div style={{ flex: 1, background: "white", border: "1px solid #ddd", borderRadius: "10px", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                <div style={{ background: "#2c3e50", color: "white", padding: "15px", fontWeight: "bold" }}>
+                    ➡️ Real-Time Guidance
+                </div>
+                
+                <div style={{ flex: 1, overflowY: "auto", padding: "0" }}>
+                    {instructions.length > 0 ? (
+                        instructions.map((step, i) => (
+                            <div key={i} style={{ padding: "12px", borderBottom: "1px solid #eee", display: "flex", gap: "10px" }}>
+                                <span style={{ fontSize: "18px" }}>
+                                    {step.type === "Head" || step.type === "Straight" ? "⬆️" : 
+                                     step.type.includes("Left") ? "⬅️" : 
+                                     step.type.includes("Right") ? "➡️" : 
+                                     step.type === "Destination" ? "🏁" : "📍"}
+                                </span>
+                                <div>
+                                    <div style={{ fontSize: "14px", fontWeight: "bold", color: "#333" }}>
+                                        {step.text}
+                                    </div>
+                                    <div style={{ fontSize: "12px", color: "#777" }}>
+                                        {step.distance > 0 ? `${step.distance}m` : ""}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div style={{ padding: "20px", textAlign: "center", color: "#777" }}>
+                            {isLoading ? "Fetching data..." : "No turns required or Route Completed."}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
