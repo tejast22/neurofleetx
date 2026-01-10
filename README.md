@@ -19,7 +19,7 @@ Built to simulate a real-world fleet environment, the system allows Admins to ma
 ### 🗺️ Real-Time Tracking & Maps
 - **Live Location Tracking:** Admins can view driver movements in real-time on an interactive map (OpenStreetMap/Leaflet).
 - **Route Optimization:** Integrated **OSRM API** to calculate the most efficient delivery routes and ETAs.
-- **Geospatial Logic:** Backend support for calculating distances and finding nearby drivers.
+- **Geospatial Logic:** Backend support for coordinate management and calculating real-time delivery routes via OSRM.
 
 ### 🤖 AI Integration (GenAI)
 - **Performance Reviews:** Integrated **Groq API (Llama 3)** to analyze driver delivery history.
