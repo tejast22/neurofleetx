@@ -44,7 +44,7 @@ Built to simulate a real-world fleet environment, the system allows Admins to ma
 | Component | Technology |
 | :--- | :--- |
 | **Backend** | Java (JDK 17+), Spring Boot 3.x, Maven |
-| **Frontend** | React.js, TailwindCSS/Bootstrap, Leaflet Maps |
+| **Frontend** | React.js, Leaflet Maps |
 | **Database** | MongoDB (NoSQL) |
 | **AI Model** | Groq Cloud API (Llama 3) |
 | **Routing** | OSRM (Open Source Routing Machine) |
